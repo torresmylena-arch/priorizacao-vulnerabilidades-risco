@@ -39,7 +39,19 @@ Autora: Mylena Ferreira Torres.
 - Rótulo: inclusão no KEV no intervalo `(t_d, t_d + 365]`. CVEs já no KEV em `t_d` saem da avaliação.
 - A função `auditar` interrompe a execução se algum atributo tiver data posterior à data de decisão.
 
-## Execução
+## Como ver funcionando
+
+- Leitura: abra `prototipo_priorizacao.ipynb` aqui no GitHub. As tabelas e o gráfico já estão gravados.
+- Execução sem instalar nada: abra o notebook no Google Colab pelo endereço
+  https://colab.research.google.com/github/torresmylena-arch/priorizacao-vulnerabilidades-risco/blob/main/prototipo_priorizacao.ipynb
+  e use "Ambiente de execução > Executar tudo".
+
+## Parâmetros da simulação
+
+Os parâmetros do inventário sintético (participação, requisitos CIA, exposição, esforço de correção
+e número médio de ativos afetados por classe) estão no dicionário `CLASSES` de `analise.py`.
+
+## Execução local
 
 ```
 python3 analise.py dados saida 30
@@ -47,3 +59,8 @@ python3 figuras.py saida/resultados.json saida
 ```
 
 Requisitos: Python 3.10 ou superior, numpy, pandas, scipy, scikit-learn e matplotlib.
+
+## Licença e dados
+
+Código sob licença MIT. Os dados vêm de fontes públicas: NVD (NIST), catálogo KEV (CISA) e EPSS (FIRST),
+e seguem os termos de uso de cada fonte.
