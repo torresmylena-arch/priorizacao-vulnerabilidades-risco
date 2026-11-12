@@ -1,0 +1,72 @@
+{
+ "volume": {
+  "risco_reduzido_acumulado": [
+   84.94119653087765,
+   5.690149039565103
+  ],
+  "risco_residual_medio": [
+   19.693147060888307,
+   1.5154914367446752
+  ],
+  "itens_kev_abertos_apos_ciclo": [
+   197.56666666666666,
+   36.05262160166013
+  ]
+ },
+ "kev_cvss": {
+  "risco_reduzido_acumulado": [
+   78.97504957827712,
+   6.911753453496365
+  ],
+  "risco_residual_medio": [
+   26.480288796156156,
+   2.8869953072423495
+  ],
+  "itens_kev_abertos_apos_ciclo": [
+   0.0,
+   0.0
+  ]
+ },
+ "epss": {
+  "risco_reduzido_acumulado": [
+   84.89463323303175,
+   8.632013640791785
+  ],
+  "risco_residual_medio": [
+   17.133454296994554,
+   1.6400714136345986
+  ],
+  "itens_kev_abertos_apos_ciclo": [
+   8.9,
+   7.782538273404859
+  ]
+ },
+ "proposta": {
+  "risco_reduzido_acumulado": [
+   81.84349504621159,
+   6.73450120821116
+  ],
+  "risco_residual_medio": [
+   16.499225666833198,
+   0.13613539952989578
+  ],
+  "itens_kev_abertos_apos_ciclo": [
+   0.0,
+   0.0
+  ]
+ },
+ "proposta_hora": {
+  "risco_reduzido_acumulado": [
+   67.66495111827699,
+   4.497779747877795
+  ],
+  "risco_residual_medio": [
+   5.974442097464254,
+   0.06312044202552215
+  ],
+  "itens_kev_abertos_apos_ciclo": [
+   0.0,
+   0.0
+  ]
+ }
+}
