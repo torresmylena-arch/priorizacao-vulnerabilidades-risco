@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de gestão de risco de vulnerabilidades</title>
+<style>
+:root {
+  color-scheme: light;
+  --plano: #f9f9f7; --superficie: #fcfcfb; --borda: #e1e0d9; --eixo: #c3c2b7;
+  --tinta: #0b0b0b; --tinta-2: #52514e; --tinta-3: #898781;
+  --serie-1: #2a78d6; --residual: #dddcd5; --foco: #0b0b0b;
+  --critico: #d03b3b; --critico-fundo: #fbeaea; --critico-texto: #a02323;
+  --realce: #eef4fc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --plano: #0d0d0d; --superficie: #1a1a19; --borda: #2c2c2a; --eixo: #383835;
+    --tinta: #f0efec; --tinta-2: #c3c2b7; --tinta-3: #898781;
+    --serie-1: #3987e5; --residual: #3f3f3b; --foco: #f0efec;
+    --critico: #d03b3b; --critico-fundo: #3a1c1c; --critico-texto: #f0a3a3;
+    --realce: #1d2836;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--plano); color: var(--tinta);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.pagina { max-width: 1240px; margin: 0 auto; padding: 20px 16px 40px; }
+header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+.sub { color: var(--tinta-2); margin: 2px 0 0; }
+.filtros { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+label { color: var(--tinta-2); font-size: 13px; }
+select, input[type=search] { font: inherit; color: var(--tinta); background: var(--superficie);
+  border: 1px solid var(--eixo); border-radius: 6px; padding: 5px 8px; }
+input[type=search] { width: 170px; }
+.aviso { margin: 14px 0 0; padding: 8px 12px; border: 1px solid var(--borda); border-radius: 8px;
+  background: var(--superficie); color: var(--tinta-2); font-size: 13px; }
+.indicadores { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 14px; }
+.cartao { background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; }
+.cartao .rot { color: var(--tinta-2); font-size: 12.5px; }
+.cartao .val { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.cartao .det { color: var(--tinta-2); font-size: 12.5px; margin-top: 2px; }
+.cartao.destaque { border-color: var(--serie-1); box-shadow: inset 3px 0 0 var(--serie-1); }
+.graficos { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; margin-top: 12px; }
+.painel { background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px 8px; position: relative; }
+.painel h2 { font-size: 14px; margin: 0; font-weight: 650; }
+.painel .nota { color: var(--tinta-2); font-size: 12.5px; margin: 1px 0 6px; }
+.legenda { display: flex; gap: 14px; font-size: 12.5px; color: var(--tinta-2); margin-bottom: 2px; }
+.legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--tinta-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+svg .rotulo { fill: var(--tinta-2); font-size: 11px; }
+.dica { position: absolute; pointer-events: none; background: var(--tinta); color: var(--superficie);
+  border-radius: 6px; padding: 6px 9px; font-size: 12px; line-height: 1.4; white-space: nowrap; z-index: 5;
+  transform: translate(-50%, -100%); display: none; }
+.dica b { font-weight: 650; }
+details { margin-top: 4px; font-size: 12.5px; color: var(--tinta-2); }
+details.secao { margin-top: 12px; font-size: 14px; color: var(--tinta); }
+details.secao > summary { cursor: pointer; font-weight: 650; color: var(--tinta-2); font-size: 13px; }
+details.secao .graficos { margin-top: 8px; }
+details table { margin-top: 6px; }
+.fila { margin-top: 12px; padding-bottom: 4px; }
+.fila .topo { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.rolagem { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 600; color: var(--tinta-2); font-size: 12px; padding: 6px 8px;
+  border-bottom: 1px solid var(--eixo); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--borda); vertical-align: top; }
+th.n, td.n { text-align: right; }
+td .seg { display: block; color: var(--tinta-2); font-size: 12px; }
+td.cve { font-weight: 600; white-space: nowrap; }
+td.porque { color: var(--tinta-2); font-size: 12.5px; min-width: 190px; }
+td.correcao { font-size: 12.5px; min-width: 150px; }
+td, th { padding-left: 6px; padding-right: 6px; }
+a { color: var(--serie-1); }
+.kev { display: inline-block; background: var(--critico-fundo); color: var(--critico-texto);
+  border: 1px solid var(--critico); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.barra { display: inline-block; height: 6px; border-radius: 3px; background: var(--serie-1); vertical-align: 1px; margin-right: 6px; }
+button { font: inherit; color: var(--tinta); background: var(--superficie); border: 1px solid var(--eixo);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer; margin: 10px 0 6px; }
+button:hover { background: var(--realce); }
+footer { color: var(--tinta-3); font-size: 12px; margin-top: 14px; }
+@media (max-width: 900px) {
+  .indicadores { grid-template-columns: repeat(2, 1fr); }
+  .graficos { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header>
+    <div>
+      <h1>Painel de gestão de risco de vulnerabilidades</h1>
+      <p class="sub">Fila de correção ordenada pelo índice de risco R = p · I</p>
+    </div>
+    <div class="filtros">
+      <label>Ciclo <select id="ciclo"></select></label>
+      <label>Visão
+        <select id="visao">
+          <option value="cve">Por vulnerabilidade</option>
+          <option value="item">Por item (ativo)</option>
+        </select>
+      </label>
+      <label>Classe de ativo
+        <select id="classe">
+          <option value="">Todas</option>
+          <option value="servidor_exposto">Servidor exposto</option>
+          <option value="servidor_interno">Servidor interno</option>
+          <option value="estacao">Estação de trabalho</option>
+          <option value="rede">Equipamento de rede</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="sokev"> Somente KEV</label>
+      <input type="search" id="busca" placeholder="Buscar CVE ou ativo" aria-label="Buscar CVE ou ativo">
+    </div>
+  </header>
+
+  <p class="aviso">Protótipo acadêmico. As CVEs, o catálogo KEV e as pontuações EPSS são reais e correspondem ao que estava
+    disponível na data de cada ciclo. O inventário de 2.000 ativos é sintético.</p>
+
+  <section class="indicadores" id="indicadores"></section>
+
+  <details class="secao" id="evolucao" open>
+  <summary>Evolução por ciclo</summary>
+  <section class="graficos">
+    <div class="painel" id="p-risco">
+      <h2>Risco aberto no início de cada ciclo</h2>
+      <p class="nota">Soma de R dos itens abertos, em impacto esperado. Clique em um ciclo para abrir a fila.</p>
+      <div class="legenda"><span><i style="background:var(--serie-1)"></i>Reduzido no ciclo</span><span><i style="background:var(--residual)"></i>Residual</span></div>
+      <svg id="g-risco" role="img" aria-label="Risco aberto e reduzido por ciclo"></svg>
+      <div class="dica"></div>
+      <details><summary>Ver como tabela</summary><div class="rolagem" id="t-risco"></div></details>
+    </div>
+    <div class="painel" id="p-itens">
+      <h2>Itens corrigidos por ciclo</h2>
+      <p class="nota">Informativo. A meta da equipe é o risco reduzido, e não a quantidade.</p>
+      <svg id="g-itens" role="img" aria-label="Itens corrigidos por ciclo"></svg>
+      <div class="dica"></div>
+    </div>
+  </section>
+  </details>
+
+  <section class="painel fila">
+    <div class="topo">
+      <div>
+        <h2 id="titulo-fila">Fila priorizada</h2>
+        <p class="nota" id="nota-fila"></p>
+      </div>
+    </div>
+    <div class="rolagem">
+      <table>
+        <thead id="cabecalho"></thead>
+        <tbody id="linhas"></tbody>
+      </table>
+    </div>
+    <button id="mais" type="button">Mostrar mais</button>
+  </section>
+
+  <footer id="rodape"></footer>
+</div>
+
+<script>
+const D = /*__DADOS__*/null;
+const fmt = (v, d = 0) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const data = s => s.slice(8, 10) + "/" + s.slice(5, 7) + "/" + s.slice(0, 4);
+const mes = s => ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"][+s.slice(5, 7) - 1] + "/" + s.slice(2, 4);
+const CLASSE = { servidor_exposto: "Servidor exposto à internet", servidor_interno: "Servidor interno",
+                 estacao: "Estação de trabalho", rede: "Equipamento de rede" };
+const EXPO = { "1": "acessível pela internet", "0.7": "em rede interna", "0.4": "em segmento isolado" };
+const PLURAL = ["servidores expostos", "servidores internos", "estações de trabalho", "equipamentos de rede"];
+const SINGULAR = ["servidor exposto", "servidor interno", "estação de trabalho", "equipamento de rede"];
+const G = Object.fromEntries(D.colunas_cve.map((c, k) => [c, k]));
+const C = Object.fromEntries(D.colunas.map((c, k) => [c, k]));
+const el = id => document.getElementById(id);
+let ciclo = D.filas["2025-11-01"] ? "2025-11-01" : D.risco[D.risco.length - 1].t;
+let limite = 12;
+
+const sel = el("ciclo");
+D.risco.forEach(c => sel.add(new Option(data(c.t), c.t)));
+sel.value = ciclo;
+
+function indicadores() {
+  const c = D.risco.find(x => x.t === ciclo);
+  const pct = c.risco_aberto ? 100 * c.risco_reduzido / c.risco_aberto : 0;
+  const cart = (rot, val, det, dest) => `<div class="cartao${dest ? " destaque" : ""}"><div class="rot">${rot}</div><div class="val">${val}</div><div class="det">${det}</div></div>`;
+  el("indicadores").innerHTML =
+    cart("Risco reduzido no ciclo", fmt(c.risco_reduzido, 1), `${fmt(pct, 0)}% do risco aberto`, true) +
+    cart("Risco aberto no início", fmt(c.risco_aberto, 1), `residual após o ciclo: ${fmt(c.risco_aberto - c.risco_reduzido, 1)}`) +
+    cart("Falhas no KEV abertas", fmt(c.kev_abertos), c.kev_abertos ? `${fmt(c.kev_corrigidos)} corrigidas neste ciclo` : "nenhuma exploração confirmada em aberto") +
+    cart("Itens abertos", fmt(c.abertos), `em ${fmt(c.ativos)} ativos`) +
+    cart("Capacidade do ciclo", fmt(c.horas) + " h", `${fmt(c.corrigidos)} itens corrigidos`);
+}
+
+function eixoY(max) {
+  const bruto = max / 4, pot = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const passo = [1, 2, 2.5, 5, 10].map(m => m * pot).find(p => p >= bruto);
+  const ticks = []; for (let v = 0; v <= max + 1e-9; v += passo) ticks.push(v);
+  if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + passo);
+  return ticks;
+}
+
+function barras(svgId, serie, partes, dica, casas) {
+  const svg = el(svgId), W = svg.clientWidth || 600, H = 210, m = { e: 40, d: 8, t: 8, b: 22 };
+  const ticks = eixoY(Math.max(...serie.map(s => partes.reduce((a, p) => a + p.v(s), 0))));
+  const topo = ticks[ticks.length - 1], n = serie.length, passo = (W - m.e - m.d) / n, larg = Math.min(26, passo - 2);
+  const y = v => m.t + (H - m.t - m.b) * (1 - v / topo);
+  let h = "";
+  ticks.forEach(t => {
+    h += `<line x1="${m.e}" x2="${W - m.d}" y1="${y(t)}" y2="${y(t)}" stroke="var(--${t ? "borda" : "eixo"})" stroke-width="1"/>`;
+    h += `<text x="${m.e - 6}" y="${y(t) + 4}" text-anchor="end">${fmt(t, casas)}</text>`;
+  });
+  serie.forEach((s, k) => {
+    const x = m.e + k * passo + (passo - larg) / 2;
+    let base = 0;
+    partes.forEach((p, j) => {
+      const v = p.v(s); if (v <= 0) return;
+      const y1 = y(base + v), alt = Math.max(0, y(base) - y1 - (j ? 2 : 0));
+      const r = Math.min(4, larg / 2, alt), ult = j === partes.length - 1 || partes.slice(j + 1).every(q => q.v(s) <= 0);
+      h += ult
+        ? `<path d="M${x},${y1 + alt} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + larg - r} Q${x + larg},${y1} ${x + larg},${y1 + r} V${y1 + alt} Z" fill="${p.cor}"/>`
+        : `<rect x="${x}" y="${y1}" width="${larg}" height="${alt}" fill="${p.cor}"/>`;
+      base += v;
+    });
+    if (s.t === ciclo) h += `<rect x="${x - 3}" y="${m.t - 2}" width="${larg + 6}" height="${H - m.t - m.b + 4}" rx="5" fill="none" stroke="var(--foco)" stroke-width="1.5"/>`;
+    if (k % 3 === 0 || n <= 12) h += `<text x="${x + larg / 2}" y="${H - 6}" text-anchor="middle">${mes(s.t)}</text>`;
+    h += `<rect data-k="${k}" x="${m.e + k * passo}" y="${m.t}" width="${passo}" height="${H - m.t - m.b}" fill="transparent" style="cursor:pointer"/>`;
+  });
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = h;
+  const cx = svg.parentElement.querySelector(".dica");
+  svg.querySelectorAll("rect[data-k]").forEach(r => {
+    const s = serie[+r.dataset.k];
+    r.addEventListener("mousemove", e => {
+      const b = svg.parentElement.getBoundingClientRect();
+      cx.innerHTML = dica(s); cx.style.display = "block";
+      cx.style.left = Math.max(110, Math.min(b.width - 110, e.clientX - b.left)) + "px"; cx.style.top = (e.clientY - b.top - 12) + "px";
+    });
+    r.addEventListener("mouseleave", () => cx.style.display = "none");
+    r.addEventListener("click", () => { ciclo = s.t; sel.value = ciclo; limite = 12; tudo(); });
+  });
+}
+
+function graficos() {
+  barras("g-risco", D.risco,
+    [{ v: s => s.risco_reduzido, cor: "var(--serie-1)" }, { v: s => s.risco_aberto - s.risco_reduzido, cor: "var(--residual)" }],
+    s => `<b>Ciclo de ${data(s.t)}</b><br>Risco aberto: ${fmt(s.risco_aberto, 1)}<br>Reduzido no ciclo: ${fmt(s.risco_reduzido, 1)}<br>Residual: ${fmt(s.risco_aberto - s.risco_reduzido, 1)}`, 0);
+  barras("g-itens", D.risco, [{ v: s => s.corrigidos, cor: "var(--tinta-3)" }],
+    s => `<b>Ciclo de ${data(s.t)}</b><br>Itens corrigidos: ${fmt(s.corrigidos)}<br>Itens abertos: ${fmt(s.abertos)}`, 0);
+  el("t-risco").innerHTML = "<table><thead><tr><th>Ciclo</th><th class='n'>Risco aberto</th><th class='n'>Reduzido</th><th class='n'>Residual</th><th class='n'>Itens corrigidos</th><th class='n'>KEV abertas</th></tr></thead><tbody>" +
+    D.risco.map(s => `<tr><td>${data(s.t)}</td><td class="n">${fmt(s.risco_aberto, 1)}</td><td class="n">${fmt(s.risco_reduzido, 1)}</td><td class="n">${fmt(s.risco_aberto - s.risco_reduzido, 1)}</td><td class="n">${fmt(s.corrigidos)}</td><td class="n">${fmt(s.kev_abertos)}</td></tr>`).join("") + "</tbody></table>";
+}
+
+const sinal = (kev, epss) => (kev ? `<span class="kev" title="Catálogo de vulnerabilidades exploradas da CISA">&#9888; KEV</span>` : `<span style="white-space:nowrap">Fora do KEV</span>`) +
+  `<span class="seg">${epss == null ? "sem EPSS na data" : "EPSS " + fmt(epss, 4)}</span>`;
+const sinal2 = (r, M) => sinal(r[M.kev], r[M.epss]) + `<span class="seg">CVSS ${r[M.cvss] == null ? "sem nota" : fmt(r[M.cvss], 1)}</span>` +
+  (r[M.produto] && r[M.produto][2] ? `<span class="seg">uso em <i>ransomware</i></span>` : "");
+const correcao = (r, M) => `${r[M.kev] ? "Aplicar correção ou mitigação do fabricante" : "Aplicar atualização do fabricante"}` +
+  (r[M.produto] ? `<span class="seg">${r[M.produto][0]}, ${r[M.produto][1]}</span>` : "") +
+  `<span class="seg"><a href="https://nvd.nist.gov/vuln/detail/${r[M.cve]}" target="_blank" rel="noopener">Avisos na NVD</a></span>`;
+const ameaca = (kev, p) => kev
+  ? `Exploração confirmada, no KEV desde ${data(kev)}, por isso p = 1.`
+  : `Probabilidade de ${fmt(100 * p, 2)}% de exploração confirmada em 365 dias.`;
+const barra = (v, max) => `<span class="barra" style="width:${Math.max(2, 30 * v / max)}px"></span>${fmt(v, 4)}`;
+const nota = v => v == null ? "sem nota" : fmt(v, 1);
+
+function fila() {
+  const c = D.risco.find(x => x.t === ciclo), cl = el("classe").value, kev = el("sokev").checked, q = el("busca").value.trim().toLowerCase();
+  const porCve = el("visao").value === "cve";
+  el("titulo-fila").textContent = `Fila priorizada do ciclo de ${data(ciclo)}`;
+  let f, todas, linhas;
+  if (porCve) {
+    todas = D.grupos[ciclo] || [];
+    const k = D.classes.indexOf(cl);
+    f = todas.filter(r => (!cl || r[G.classes][k] > 0) && (!kev || r[G.kev]) && (!q || r[G.cve].toLowerCase().includes(q)));
+    const maxR = Math.max(...todas.map(r => r[G.R]), 1e-9);
+    el("cabecalho").innerHTML = `<tr><th class="n">Pos.</th><th>CVE</th><th>Ativos afetados</th><th>Sinal de ameaça</th>
+      <th class="n">p</th><th class="n">I máx.</th><th>R máx.</th><th class="n">Risco somado</th><th class="n">Esforço</th><th>Por que está nesta posição</th><th>Correção</th></tr>`;
+    el("nota-fila").textContent = `${fmt(todas.length)} primeiras vulnerabilidades entre ${fmt(c.abertos)} itens abertos em ${fmt(c.ativos)} ativos. ` +
+      `A posição é a do item mais bem colocado. A capacidade do ciclo cobre os ${fmt(c.corrigidos)} primeiros itens.`;
+    linhas = f.slice(0, limite).map(r => {
+      const partes = r[G.classes].map((n, j) => n ? `${fmt(n)} ${n > 1 ? PLURAL[j] : SINGULAR[j]}` : "").filter(Boolean);
+      return `<tr>
+        <td class="n">${fmt(r[G.pos])}</td>
+        <td class="cve">${r[G.cve]}<span class="seg" style="font-weight:400">publicada em ${data(r[G.pub])}</span></td>
+        <td>${partes.join(",<br>")}</td>
+        <td>${sinal2(r, G)}</td>
+        <td class="n">${fmt(r[G.p], 4)}</td>
+        <td class="n">${fmt(r[G.I], 2)}</td>
+        <td style="white-space:nowrap">${barra(r[G.R], maxR)}</td>
+        <td class="n">${fmt(r[G.Rsum], 2)}</td>
+        <td class="n" style="white-space:nowrap">${fmt(r[G.esforco], 1)} h</td>
+        <td class="porque">${ameaca(r[G.kev], r[G.p])} Presente em ${partes.join(" e em ")}; o ativo mais crítico tem impacto ${fmt(r[G.I], 2)}.</td>
+        <td class="correcao">${correcao(r, G)}</td></tr>`;
+    });
+  } else {
+    todas = D.filas[ciclo] || [];
+    f = todas.filter(r => (!cl || r[C.classe] === cl) && (!kev || r[C.kev]) && (!q || (r[C.cve] + " " + r[C.ativo]).toLowerCase().includes(q)));
+    const maxR = Math.max(...todas.map(r => r[C.R]), 1e-9);
+    el("cabecalho").innerHTML = `<tr><th class="n">Pos.</th><th>CVE</th><th>Ativo</th><th>Sinal de ameaça</th>
+      <th class="n">p</th><th class="n">I</th><th>R = p · I</th><th class="n">Esforço</th><th>Por que está nesta posição</th><th>Correção</th></tr>`;
+    el("nota-fila").textContent = `${fmt(todas.length)} primeiros de ${fmt(c.abertos)} itens abertos. A capacidade do ciclo cobre os ${fmt(c.corrigidos)} primeiros da fila.`;
+    linhas = f.slice(0, limite).map(r => `<tr>
+      <td class="n">${r[C.pos]}</td>
+      <td class="cve">${r[C.cve]}<span class="seg" style="font-weight:400">publicada em ${data(r[C.pub])}</span></td>
+      <td>${r[C.ativo]}<span class="seg">${CLASSE[r[C.classe]]}</span></td>
+      <td>${sinal2(r, C)}</td>
+      <td class="n">${fmt(r[C.p], 4)}</td>
+      <td class="n">${fmt(r[C.I], 2)}</td>
+      <td style="white-space:nowrap">${barra(r[C.R], maxR)}</td>
+      <td class="n" style="white-space:nowrap">${fmt(r[C.esforco], 2)} h</td>
+      <td class="porque">${ameaca(r[C.kev], r[C.p])} Ativo ${EXPO[String(r[C.e])] || ""}, com requisitos CIA ${r[C.c]}/${r[C.i]}/${r[C.a]}.</td>
+      <td class="correcao">${correcao(r, C)}</td></tr>`);
+  }
+  el("linhas").innerHTML = linhas.join("") || `<tr><td colspan="11" style="color:var(--tinta-2)">Nenhum registro entre os ${fmt(todas.length)} primeiros atende aos filtros.</td></tr>`;
+  el("mais").style.display = f.length > limite ? "" : "none";
+}
+
+function tudo() { indicadores(); graficos(); fila(); }
+sel.addEventListener("change", () => { ciclo = sel.value; limite = 12; tudo(); });
+["visao", "classe", "sokev", "busca"].forEach(id => el(id).addEventListener("input", () => { limite = 12; fila(); }));
+el("mais").addEventListener("click", () => { limite += 25; fila(); });
+new ResizeObserver(graficos).observe(el("p-risco"));
+el("evolucao").addEventListener("toggle", graficos);
+el("rodape").textContent = `Gerado em ${data(D.gerado_em)} por gerar_painel.py. Probabilidade p: EPSS calibrado para inclusão no KEV em 365 dias. ` +
+  `Impacto I: média dos requisitos CIA do ativo, ponderada pela exposição. Correção: orientação genérica e produto do catálogo KEV; em produção, o texto vem do achado do scanner e segue para o chamado. Fontes: NVD (NIST), KEV (CISA) e EPSS (FIRST).`;
+tudo();
+</script>
+</body>
+</html>

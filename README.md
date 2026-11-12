@@ -46,6 +46,15 @@ Autora: Mylena Ferreira Torres.
   https://colab.research.google.com/github/torresmylena-arch/priorizacao-vulnerabilidades-risco/blob/main/prototipo_priorizacao.ipynb
   e use "Ambiente de execução > Executar tudo".
 
+## Painel de gestão de risco
+
+`painel.html` é a tela do protótipo. Baixe o arquivo e abra no navegador (não precisa de servidor nem de internet).
+Ele mostra, para cada ciclo mensal, os indicadores de risco aberto e reduzido, a fila priorizada por
+vulnerabilidade ou por item, a justificativa de cada posição e a orientação de correção.
+As CVEs, o KEV e o EPSS são reais e respeitam a data do ciclo; o inventário de ativos é sintético.
+
+Para gerar de novo: `python gerar_painel.py dados painel_modelo.html painel.html`
+
 ## Parâmetros da simulação
 
 Os parâmetros do inventário sintético (participação, requisitos CIA, exposição, esforço de correção
