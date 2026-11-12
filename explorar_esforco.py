@@ -7,13 +7,13 @@ import analise as A
 base, kev, epss = A.carregar('dados')
 tr, est_tr, _ = A.montar_conjunto(base, A.TREINO_INI, A.TREINO_FIM)
 te, est_te, _ = A.montar_conjunto(base, A.TESTE_INI, A.TESTE_FIM)
-mod = A.treinar(tr, est_tr, A.epss_em(epss, tr['cve'], tr['t_d']))
+mod = A.treinar(tr, est_tr, A.epss_em(epss, tr['cve'], tr['t_d']), A.carregar_sinais('dados', kev))
 ctx = {"epss": epss, "estado": {}, "p": {}, "p_meta": {}}
 for t in A.ciclos(date(2025, 2, 1), A.HORIZONTE):
     est_t = A.estado_em(te, t); est_t["nota"] = est_t["vet"].map(A.cvss31_base).astype(float)
     ctx["estado"][t] = est_t
     ep_t = A.epss_em(epss, te["cve"], [t] * len(te))
-    ctx["p"][t] = pd.Series(A.prever(mod, te, est_t, mod["final"], ep_t), index=te.index)
+    ctx["p"][t] = pd.Series(A.prever(mod, te, est_t, mod["final"], ep_t, [t] * len(te)), index=te.index)
     ctx["p_meta"][t] = ctx["p"][t]
 out = {}
 for cen, cap in (("C1", 0.10), ("C2", 0.05), ("C3", 0.20)):

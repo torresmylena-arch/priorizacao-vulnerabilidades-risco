@@ -16,17 +16,18 @@ PREFIXO = {"servidor_exposto": "srv-ext", "servidor_interno": "srv-int", "estaca
 
 def preparar(pasta):
     base, kev, epss = A.carregar(pasta)
+    sin = A.carregar_sinais(pasta, kev)
     tr, est_tr, _ = A.montar_conjunto(base, A.TREINO_INI, A.TREINO_FIM)
     te, est_te, _ = A.montar_conjunto(base, A.TESTE_INI, A.TESTE_FIM)
-    mod = A.treinar(tr, est_tr, A.epss_em(epss, tr["cve"], tr["t_d"]))
-    ctx = {"epss": epss, "estado": {}, "p": {}, "p_meta": {}}
+    mod = A.treinar(tr, est_tr, A.epss_em(epss, tr["cve"], tr["t_d"]), sin)
+    ctx = {"epss": epss, "estado": {}, "p": {}, "p_meta": {}, "sin": sin}
     for t in A.ciclos(date(2025, 2, 1), A.HORIZONTE):
         est_t = A.estado_em(te, t)
         A.auditar(te[te["t_d"] <= t], est_t[te["t_d"] <= t], t)
         est_t["nota"] = est_t["vet"].map(A.cvss31_base).astype(float)
         ctx["estado"][t] = est_t
         ep_t = A.epss_em(epss, te["cve"], [t] * len(te))
-        ctx["p"][t] = pd.Series(A.prever(mod, te, est_t, mod["final"], ep_t), index=te.index)
+        ctx["p"][t] = pd.Series(A.prever(mod, te, est_t, mod["final"], ep_t, [t] * len(te)), index=te.index)
         ctx["p_meta"][t] = None
     prod = {r.cve: [r.fab, r.prod, r.ransom == "Known"] for r in kev.itertuples()}
     return te, ctx, mod["final"], prod
@@ -60,6 +61,9 @@ def rodar(te, ctx, estrategia, seed=A.RNG_BASE, capacidade=0.10, guardar_fila=Fa
         if guardar_fila:
             nota = ctx["estado"][t].loc[sel["idx"], "nota"].values
             ep = ctx["epss"][t].reindex(sel["cve"]).values if t in ctx["epss"] else np.full(len(sel), np.nan)
+            unicas = sel["cve"].unique()
+            S = ctx["sin"].em(unicas, [t] * len(unicas)) if ctx.get("sin") is not None else np.zeros((len(unicas), 4))
+            hist = dict(zip(unicas, np.rint(np.expm1(S[:, 0])).astype(int))); provas = dict(zip(unicas, np.rint(np.expm1(S[:, 2])).astype(int)))
             linhas = []
             for pos, k in enumerate(ordem[:TOPO], 1):
                 r = sel.iloc[k]
@@ -69,7 +73,8 @@ def rodar(te, ctx, estrategia, seed=A.RNG_BASE, capacidade=0.10, guardar_fila=Fa
                                r["data_kev"].isoformat() if kev_t[k] else None,
                                None if np.isnan(nota[k]) else round(float(nota[k]), 1),
                                None if np.isnan(ep[k]) else round(float(ep[k]), 5),
-                               float(r["esforco"]), r["pub"].isoformat(), prod.get(r["cve"]) if kev_t[k] else None])
+                               float(r["esforco"]), r["pub"].isoformat(), prod.get(r["cve"]) if kev_t[k] else None,
+                               int(hist[r["cve"]]), int(provas[r["cve"]])])
             filas[t.isoformat()] = linhas
             pos = np.empty(len(sel), int); pos[ordem] = np.arange(1, len(sel) + 1)
             df = pd.DataFrame({"cve": sel["cve"].values, "classe": sel["classe"].values, "pos": pos, "p": p, "R": R,
@@ -87,7 +92,8 @@ def rodar(te, ctx, estrategia, seed=A.RNG_BASE, capacidade=0.10, guardar_fila=Fa
                            round(float(r["Rsum"]), 4), r["data_kev"].isoformat() if r["kev"] else None,
                            None if np.isnan(r["nota"]) else round(float(r["nota"]), 1),
                            None if np.isnan(r["ep"]) else round(float(r["ep"]), 5), round(float(r["h"]), 2),
-                           r["pub"].isoformat(), prod.get(cve) if r["kev"] else None])
+                           r["pub"].isoformat(), prod.get(cve) if r["kev"] else None,
+                           int(hist[cve]), int(provas[cve])])
             grupos[t.isoformat()] = lg
         aberto[sel.index.values[esc]] = False
     return serie, filas, grupos
@@ -96,12 +102,19 @@ def rodar(te, ctx, estrategia, seed=A.RNG_BASE, capacidade=0.10, guardar_fila=Fa
 if __name__ == "__main__":
     pasta, modelo, saida = sys.argv[1:4]
     te, ctx, final, prod = preparar(pasta)
-    risco, filas, grupos = rodar(te, ctx, "proposta", guardar_fila=True, prod=prod)
+    risco, filas, grupos = rodar(te, ctx, "proposta_hora", guardar_fila=True, prod=prod)   # fila recomendada: risco por hora de esforço
     volume, _, _ = rodar(te, ctx, "volume")
-    dados = {"gerado_em": date.today().isoformat(), "variante": final, "semente": A.RNG_BASE,
-             "colunas": ["pos", "cve", "ativo", "classe", "c", "i", "a", "e", "p", "I", "R", "kev", "cvss", "epss", "esforco", "pub", "produto"],
-             "colunas_cve": ["pos", "cve", "n", "classes", "p", "I", "R", "Rsum", "kev", "cvss", "epss", "esforco", "pub", "produto"],
+    dados = {"gerado_em": date.today().isoformat(), "variante": final, "estrategia": "proposta_hora", "semente": A.RNG_BASE,
+             "colunas": ["pos", "cve", "ativo", "classe", "c", "i", "a", "e", "p", "I", "R", "kev", "cvss", "epss", "esforco", "pub", "produto", "hist", "provas"],
+             "colunas_cve": ["pos", "cve", "n", "classes", "p", "I", "R", "Rsum", "kev", "cvss", "epss", "esforco", "pub", "produto", "hist", "provas"],
              "classes": list(PREFIXO), "risco": risco, "filas": filas, "grupos": grupos}
+    # situação de correção informada pelo fabricante no registro da CVE e vetor de ataque, para as CVEs mostradas
+    mostradas = sorted({r[1] for f in filas.values() for r in f} | {r[1] for g in grupos.values() for r in g})
+    sin = ctx["sin"]
+    ult = max(ctx["estado"])
+    vet = dict(zip(te["cve"], ctx["estado"][ult]["vet"].fillna("")))
+    dados["correcao"] = {c: sin.s.get(c, {}).get("c") for c in mostradas if sin.s.get(c, {}).get("c")}
+    dados["vetor"] = {c: vet.get(c, "")[:1] for c in mostradas if vet.get(c)}
     html = open(modelo, encoding="utf-8").read().replace("/*__DADOS__*/null", json.dumps(dados, ensure_ascii=False, separators=(",", ":")))
     open(saida, "w", encoding="utf-8").write(html)
     u = risco[-1]; v = volume[-1]

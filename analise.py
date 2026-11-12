@@ -4,18 +4,25 @@ Etapas
   1. Carrega os dados públicos coletados (NVD: registros e histórico de alterações;
      KEV da CISA; EPSS diário do FIRST).
   2. Reconstrói os atributos de cada CVE na data de decisão t_d (ponto no tempo).
-  3. Treina regressão logística e gradient boosting, calibra e avalia no teste.
+  3. Treina regressão logística e gradient boosting, calibra e avalia no teste. Uma segunda
+     rodada usa sinais abertos e datados: fabricante, histórico no KEV e provas de conceito.
   4. Simula um ambiente corporativo e compara estratégias de priorização.
   5. Compara funções de risco com CVEs reais.
 
 Uso: python3 analise.py <pasta_dados> <pasta_saida>
 """
-import json, math, sys, os
+import json
+import re
+import gzip
+import bisect, math, sys, os
 from datetime import date, timedelta
+from collections import defaultdict
 import numpy as np
 import pandas as pd
 from scipy.stats import kendalltau
 from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.metrics import average_precision_score, brier_score_loss, precision_recall_curve
@@ -278,7 +285,101 @@ def _ajusta_hgb(Xn, y, fit, val):
     return melhor
 
 
-def treinar(tr, est_tr, ep_tr):
+# ----------------------------------------------------------------------------
+# 3b. Sinais abertos e datados (fabricante, histórico no KEV e provas de conceito)
+# ----------------------------------------------------------------------------
+
+SUFIXOS = {"inc", "corp", "corporation", "ltd", "llc", "co", "gmbh", "se", "ag", "sa", "the", "software", "foundation", "project"}
+
+
+def chave(nome):
+    """Primeiro termo significativo do nome do fabricante, em minúsculas (ex.: 'Oracle Corporation' -> 'oracle')."""
+    bruto = str(nome).strip().lower()
+    if bruto in ("", "n/a", "na", "unknown", "unspecified", "-"):
+        return None
+    t = [x for x in re.findall(r"[a-z0-9][a-z0-9\-\.]*", bruto) if x not in SUFIXOS]
+    if not t:
+        return None
+    return t[0]
+
+
+def termos(prod):
+    return {x for x in re.findall(r"[a-z0-9]{4,}", str(prod).lower()) if x not in ("multiple", "products", "product", "server", "software")}
+
+
+class Sinais:
+    def __init__(self, pasta, kev):
+        self.s = json.load(gzip.open(pasta + "/sinais.json.gz", "rt", encoding="utf-8"))
+        self.fab = defaultdict(list)          # chave do fabricante -> [(data de inclusão no KEV, termos do produto)]
+        for r in kev.itertuples():
+            k = chave(r.fab)
+            if k:
+                self.fab[k].append((r.data_kev, termos(r.prod)))
+        for k in self.fab:
+            self.fab[k].sort(key=lambda x: x[0])
+        self.datas = {k: [d for d, _ in v] for k, v in self.fab.items()}
+
+    def em(self, cves, ts):
+        """Matriz [histórico do fabricante, histórico do produto, provas de conceito, fabricante ausente] em cada data."""
+        out = np.zeros((len(cves), 4))
+        for i, (c, t) in enumerate(zip(cves, ts)):
+            r = self.s.get(c)
+            if r is None:
+                out[i, 3] = 1
+                continue
+            hf = hp = 0
+            chaves = {}
+            for f, p in r["f"]:
+                k = chave(f)
+                if k:
+                    chaves.setdefault(k, set()).update(termos(p))
+            if not chaves:
+                out[i, 3] = 1
+            for k, tp in chaves.items():
+                if k in self.datas:
+                    n = bisect.bisect_left(self.datas[k], t)      # inclusões estritamente anteriores a t
+                    hf += n
+                    hp += sum(1 for d, tk in self.fab[k][:n] if tk & tp)
+            iso = t.isoformat()
+            out[i, 0], out[i, 1] = np.log1p(hf), np.log1p(hp)
+            out[i, 2] = np.log1p(bisect.bisect_left(r["poc"], iso))
+        return out
+
+    def alterada_apos(self, cves, ts):
+        return np.array([(self.s.get(c, {}).get("u", "") or "") > t.isoformat() for c, t in zip(cves, ts)])
+
+
+def atributos_sinais(sin, df, est, ep, ts):
+    S = sin.em(df["cve"].values, list(ts))
+    lep = np.log(np.clip(np.nan_to_num(ep, nan=1e-5), 1e-5, 1 - 1e-5)); lep = lep - np.log1p(-np.exp(lep))
+    v = est["vet"].fillna("").values
+    ok = np.array([len(s) == 8 for s in v])
+    av = np.array([s[0] == "N" if len(s) == 8 else False for s in v])
+    pr = np.array([s[2] == "N" if len(s) == 8 else False for s in v])
+    ui = np.array([s[3] == "N" if len(s) == 8 else False for s in v])
+    X1 = np.column_stack([lep, S[:, 0], S[:, 2]])
+    X2 = np.column_stack([X1, S[:, 1], S[:, 3], av, pr, ui, ~ok]).astype(float)
+    return X1, X2
+
+
+def _lr_s(C):
+    return make_pipeline(StandardScaler(), LogisticRegression(C=C, class_weight="balanced", max_iter=2000))
+
+
+def _hgb_s(prof):
+    return HistGradientBoostingClassifier(max_depth=prof, learning_rate=0.05, max_iter=150, l2_regularization=1.0,
+                                          class_weight="balanced", random_state=0)
+
+
+VARIANTES_S = {"S1": (0, _lr_s, (0.01, 0.1, 1.0)), "S2": (1, _lr_s, (0.01, 0.1, 1.0)), "S3": (1, _hgb_s, (2, 3))}
+
+
+def carregar_sinais(pasta, kev):
+    """Sinais abertos e datados (coleta/extrair_sinais.py); None se o arquivo não existir."""
+    return Sinais(pasta, kev) if os.path.exists(os.path.join(pasta, "sinais.json.gz")) else None
+
+
+def treinar(tr, est_tr, ep_tr, sin=None):
     """Ajuste em jan-ago/2023; seleção de hiperparâmetros, escolha do modelo e calibração em set-dez/2023.
 
     Variantes: só metadados (CVSS, CWE, CNA); metadados com a pontuação EPSS vigente em t_d;
@@ -302,16 +403,30 @@ def treinar(tr, est_tr, ep_tr):
     res["variantes"]["epss_cal"] = {"modelo": None, "params": {}, "ap_val": average_precision_score(y[val], ep0[val]),
                                     "cal": cal, "usa_ep": True, "kind": "epss"}
     cands = ["lr_epss", "hgb_epss", "epss_cal"]
+    if sin is not None:
+        # segunda rodada: variantes com sinais abertos e datados, escolhidas pela mesma validação temporal
+        Xs = atributos_sinais(sin, tr, est_tr, ep_tr, tr["t_d"])
+        for nome, (k, fn, grade) in VARIANTES_S.items():
+            ap, g = max((average_precision_score(y[val], fn(g).fit(Xs[k][fit], y[fit]).predict_proba(Xs[k][val])[:, 1]), g) for g in grade)
+            m = fn(g).fit(Xs[k][fit], y[fit])
+            cal = Platt().fit(m.predict_proba(Xs[k][val])[:, 1], y[val])
+            res["variantes"][nome] = {"modelo": m, "params": {"hiper": g}, "ap_val": ap, "cal": cal, "usa_ep": True, "kind": "sinais", "k": k}
+        res["sin"] = sin
+        cands += list(VARIANTES_S)
     res["final"] = max(cands, key=lambda k: res["variantes"][k]["ap_val"])
     res["n_fit"], res["n_val"] = int(fit.sum()), int(val.sum())
     res["pos_fit"], res["pos_val"] = int(y[fit].sum()), int(y[val].sum())
     return res
 
 
-def prever(mod, base, est, qual, ep=None):
+def prever(mod, base, est, qual, ep=None, ts=None):
+    """Probabilidade calibrada. Para as variantes com sinais abertos, ts é a data em que os sinais são lidos."""
     v = mod["variantes"][qual]
     if v["kind"] == "epss":
         bruto = np.nan_to_num(ep, nan=1e-5)
+    elif v["kind"] == "sinais":
+        assert ts is not None, "variantes com sinais abertos exigem a data de leitura (ts)"
+        bruto = v["modelo"].predict_proba(atributos_sinais(mod["sin"], base, est, ep, ts)[v["k"]])[:, 1]
     else:
         Xo, Xn = mod["cod"].matriz(base, est, ep if v["usa_ep"] else None)
         bruto = v["modelo"].predict_proba(Xo if v["kind"] == "lr" else Xn)[:, 1]
@@ -365,10 +480,10 @@ def gerar_itens(teste, inv, rng, prob_presenca=0.15):
     return itens.reset_index(drop=True)
 
 
-ESTRATEGIAS = ["volume", "cvss", "kev_cvss", "epss", "proposta", "proposta_raiz", "aditiva", "cvss_impacto", "proposta_meta"]
+ESTRATEGIAS = ["volume", "cvss", "kev_cvss", "epss", "proposta", "proposta_raiz", "aditiva", "cvss_impacto", "proposta_meta", "proposta_epss"]
 
 
-def pontuar(itens_abertos, t, ctx, est_t, p_t, rng, I_col="I_media", pm_t=None):
+def pontuar(itens_abertos, t, ctx, est_t, p_t, rng, I_col="I_media", pm_t=None, pe_t=None):
     it = itens_abertos
     kev_t = it["data_kev"].notna() & (it["data_kev"] <= t)
     nota = est_t.loc[it["idx"], "nota"].values
@@ -377,6 +492,7 @@ def pontuar(itens_abertos, t, ctx, est_t, p_t, rng, I_col="I_media", pm_t=None):
     I = it[I_col].values
     ep = ctx["epss"][t].reindex(it["cve"]).fillna(0).values if t in ctx["epss"] else np.zeros(len(it))
     nota0 = np.nan_to_num(nota, nan=0.0)
+    pe = np.where(kev_t.values, 1.0, pe_t.loc[it["idx"]].values) if pe_t is not None else p   # EPSS calibrado, para comparação
     return {
         "volume": -it["esforco"].values,
         "cvss": nota0,
@@ -388,6 +504,10 @@ def pontuar(itens_abertos, t, ctx, est_t, p_t, rng, I_col="I_media", pm_t=None):
         "cvss_impacto": nota0 / 10 * I,
         "proposta_meta": (np.where(kev_t.values, 1.0, pm_t.loc[it["idx"]].values) * I) if pm_t is not None else p * I,
         "proposta_hora": p * I / it["esforco"].values,
+        "proposta_epss": pe * I,                      # mesma regra, com o EPSS calibrado no lugar do modelo escolhido
+        "proposta_epss_hora": pe * I / it["esforco"].values,
+        "p_hora": p / it["esforco"].values,          # mesma probabilidade, sem o impacto do ativo
+        "epss_hora": ep / it["esforco"].values,      # EPSS bruto por hora de esforço
         "_desempate": rng.random(len(it)),
     }, p
 
@@ -409,7 +529,7 @@ def simular(teste, ctx, seed, capacidade=0.10, I_col="I_media", fator_e=1.0, est
             if not disp.any():
                 continue
             sel = itens[disp]
-            sc, _ = pontuar(sel, t, ctx, ctx["estado"][t], ctx["p"][t], rng, I_col, ctx["p_meta"][t])
+            sc, _ = pontuar(sel, t, ctx, ctx["estado"][t], ctx["p"][t], rng, I_col, ctx["p_meta"][t], ctx.get("p_epss", {}).get(t))
             ordem = np.lexsort((desempate[sel.index.values], -sc[nome]))
             horas = capacidade * sel["esforco"].sum()
             esf = sel["esforco"].values[ordem]
@@ -472,12 +592,16 @@ def main(pasta, saida, n_sementes=30):
     ep_te = epss_em(epss, te["cve"], te["t_d"])
     out["dados"]["epss_cobertura_treino"] = float(np.mean(~np.isnan(ep_tr)))
     out["dados"]["epss_cobertura_teste"] = float(np.mean(~np.isnan(ep_te)))
-    mod = treinar(tr, est_tr, ep_tr)
+    sin = carregar_sinais(pasta, kev)
+    mod = treinar(tr, est_tr, ep_tr, sin)
     y = te["y"].values
     nomes = {"lr_meta": "Regressão logística (metadados)", "hgb_meta": "Gradient boosting (metadados)",
              "lr_epss": "Regressão logística (metadados e EPSS)", "hgb_epss": "Gradient boosting (metadados e EPSS)",
              "epss_cal": "EPSS calibrado"}
-    series = {nomes[k]: prever(mod, te, est_te, k, ep_te) for k in nomes}
+    if sin is not None:
+        nomes.update({"S1": "Regressão logística (EPSS, histórico do fabricante e provas de conceito)",
+                      "S2": "Regressão logística (sinais abertos e CVSS)", "S3": "Gradient boosting (sinais abertos e CVSS)"})
+    series = {nomes[k]: prever(mod, te, est_te, k, ep_te, te["t_d"]) for k in nomes}
     series["EPSS em t_d"] = np.nan_to_num(ep_te, nan=0.0)
     series["CVSS base"] = np.nan_to_num(est_te["vet"].map(cvss31_base).astype(float).values, nan=0.0)
     cls = {}
@@ -497,17 +621,35 @@ def main(pasta, saida, n_sementes=30):
                      "params": {nomes[k]: v["params"] for k, v in mod["variantes"].items()},
                      "n_fit": mod["n_fit"], "n_val": mod["n_val"], "pos_fit": mod["pos_fit"], "pos_val": mod["pos_val"],
                      "prevalencia_teste": float(y.mean())}
+    if sin is not None:
+        Xt = atributos_sinais(sin, te, est_te, ep_te, te["t_d"])
+        alt = sin.alterada_apos(te["cve"].values, list(te["t_d"]))
+        fin, ref = series[nomes[mod["final"]]], series["EPSS em t_d"]
+        rngb = np.random.default_rng(0); difs = []
+        for _ in range(1000):
+            i = rngb.integers(0, len(y), len(y))
+            if y[i].sum():
+                difs.append(average_precision_score(y[i], fin[i]) - average_precision_score(y[i], ref[i]))
+        out["sinais"] = {
+            "cobertura_fabricante": float((Xt[1][:, 4] == 0).mean()), "com_historico_kev": float((Xt[0][:, 1] > 0).mean()),
+            "com_prova_conceito": float((Xt[0][:, 2] > 0).mean()),
+            "positivos_com_historico": float((Xt[0][y == 1, 1] > 0).mean()), "positivos_com_prova": float((Xt[0][y == 1, 2] > 0).mean()),
+            "registros_alterados_apos_td": float(alt.mean()),
+            "ap_sem_alterados": {"final": float(average_precision_score(y[~alt], fin[~alt])), "epss": float(average_precision_score(y[~alt], ref[~alt]))},
+            "dif_ap_final_menos_epss": [float(np.mean(difs)), float(np.percentile(difs, 2.5)), float(np.percentile(difs, 97.5))],
+            "coef_S1": [float(c) for c in mod["variantes"]["S1"]["modelo"][-1].coef_[0]]}
 
     # estados e probabilidades por ciclo (recalculados com dados vigentes em t)
-    ctx = {"epss": epss, "estado": {}, "p": {}, "p_meta": {}}
+    ctx = {"epss": epss, "estado": {}, "p": {}, "p_meta": {}, "p_epss": {}}
     for t in ciclos(date(2025, 2, 1), HORIZONTE):
         est_t = estado_em(te, t)
         auditar(te[te["t_d"] <= t], est_t[te["t_d"] <= t], t)
         est_t["nota"] = est_t["vet"].map(cvss31_base).astype(float)
         ctx["estado"][t] = est_t
         ep_t = epss_em(epss, te["cve"], [t] * len(te))
-        ctx["p"][t] = pd.Series(prever(mod, te, est_t, mod["final"], ep_t), index=te.index)
+        ctx["p"][t] = pd.Series(prever(mod, te, est_t, mod["final"], ep_t, [t] * len(te)), index=te.index)
         ctx["p_meta"][t] = pd.Series(prever(mod, te, est_t, "hgb_meta"), index=te.index)
+        ctx["p_epss"][t] = pd.Series(prever(mod, te, est_t, "epss_cal", ep_t), index=te.index)
 
     cenarios = {"C1": {"capacidade": 0.10}, "C2": {"capacidade": 0.05}, "C3": {"capacidade": 0.20},
                 "C4a": {"capacidade": 0.10, "fator_e": 0.8}, "C4b": {"capacidade": 0.10, "fator_e": 1.2},

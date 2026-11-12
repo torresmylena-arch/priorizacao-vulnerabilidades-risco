@@ -15,7 +15,7 @@ ESTILOS = {
     "CVSS base": dict(color="#999999", lw=1.2, ls=":"),
 }
 NOMES = {"volume": "Volume", "cvss": "CVSS", "kev_cvss": "KEV e CVSS", "epss": "EPSS",
-         "proposta": "$p \\cdot I$", "proposta_hora": "$p \\cdot I / h$ (exploratória)"}
+         "proposta": "$p \\cdot I$", "proposta_hora": "$p \\cdot I / h$ (variante)"}
 
 
 def curva_pr(r, saida):

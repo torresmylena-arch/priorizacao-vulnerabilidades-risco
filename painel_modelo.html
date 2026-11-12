@@ -71,8 +71,9 @@ td { padding: 7px 8px; border-bottom: 1px solid var(--borda); vertical-align: to
 th.n, td.n { text-align: right; }
 td .seg { display: block; color: var(--tinta-2); font-size: 12px; }
 td.cve { font-weight: 600; white-space: nowrap; }
-td.porque { color: var(--tinta-2); font-size: 12.5px; min-width: 190px; }
-td.correcao { font-size: 12.5px; min-width: 150px; }
+td.porque { color: var(--tinta-2); font-size: 12.5px; min-width: 175px; }
+td.correcao { font-size: 12.5px; min-width: 165px; }
+td.correcao b { font-weight: 600; }
 td, th { padding-left: 6px; padding-right: 6px; }
 a { color: var(--serie-1); }
 .kev { display: inline-block; background: var(--critico-fundo); color: var(--critico-texto);
@@ -93,7 +94,7 @@ footer { color: var(--tinta-3); font-size: 12px; margin-top: 14px; }
   <header>
     <div>
       <h1>Painel de gestão de risco de vulnerabilidades</h1>
-      <p class="sub">Fila de correção ordenada pelo índice de risco R = p · I</p>
+      <p class="sub">Fila de correção ordenada pelo risco reduzido por hora de esforço (R/h), com R = p · I</p>
     </div>
     <div class="filtros">
       <label>Ciclo <select id="ciclo"></select></label>
@@ -135,7 +136,7 @@ footer { color: var(--tinta-3); font-size: 12px; margin-top: 14px; }
     </div>
     <div class="painel" id="p-itens">
       <h2>Itens corrigidos por ciclo</h2>
-      <p class="nota">Informativo. A meta da equipe é o risco reduzido, e não a quantidade.</p>
+      <p class="nota">Informativo. A meta da equipe é o risco residual, e não a quantidade.</p>
       <svg id="g-itens" role="img" aria-label="Itens corrigidos por ciclo"></svg>
       <div class="dica"></div>
     </div>
@@ -186,9 +187,9 @@ function indicadores() {
   const pct = c.risco_aberto ? 100 * c.risco_reduzido / c.risco_aberto : 0;
   const cart = (rot, val, det, dest) => `<div class="cartao${dest ? " destaque" : ""}"><div class="rot">${rot}</div><div class="val">${val}</div><div class="det">${det}</div></div>`;
   el("indicadores").innerHTML =
-    cart("Risco reduzido no ciclo", fmt(c.risco_reduzido, 1), `${fmt(pct, 0)}% do risco aberto`, true) +
-    cart("Risco aberto no início", fmt(c.risco_aberto, 1), `residual após o ciclo: ${fmt(c.risco_aberto - c.risco_reduzido, 1)}`) +
-    cart("Falhas no KEV abertas", fmt(c.kev_abertos), c.kev_abertos ? `${fmt(c.kev_corrigidos)} corrigidas neste ciclo` : "nenhuma exploração confirmada em aberto") +
+    cart("Risco residual após o ciclo", fmt(c.risco_aberto - c.risco_reduzido, 1), "soma de R dos itens que ficam abertos", true) +
+    cart("Risco reduzido no ciclo", fmt(c.risco_reduzido, 1), `${fmt(pct, 0)}% do risco aberto no início (${fmt(c.risco_aberto, 1)})`) +
+    cart("Itens no KEV abertos", fmt(c.kev_abertos), c.kev_abertos ? `${fmt(c.kev_corrigidos)} corrigidos neste ciclo` : "nenhuma exploração confirmada em aberto") +
     cart("Itens abertos", fmt(c.abertos), `em ${fmt(c.ativos)} ativos`) +
     cart("Capacidade do ciclo", fmt(c.horas) + " h", `${fmt(c.corrigidos)} itens corrigidos`);
 }
@@ -248,7 +249,7 @@ function graficos() {
     s => `<b>Ciclo de ${data(s.t)}</b><br>Risco aberto: ${fmt(s.risco_aberto, 1)}<br>Reduzido no ciclo: ${fmt(s.risco_reduzido, 1)}<br>Residual: ${fmt(s.risco_aberto - s.risco_reduzido, 1)}`, 0);
   barras("g-itens", D.risco, [{ v: s => s.corrigidos, cor: "var(--tinta-3)" }],
     s => `<b>Ciclo de ${data(s.t)}</b><br>Itens corrigidos: ${fmt(s.corrigidos)}<br>Itens abertos: ${fmt(s.abertos)}`, 0);
-  el("t-risco").innerHTML = "<table><thead><tr><th>Ciclo</th><th class='n'>Risco aberto</th><th class='n'>Reduzido</th><th class='n'>Residual</th><th class='n'>Itens corrigidos</th><th class='n'>KEV abertas</th></tr></thead><tbody>" +
+  el("t-risco").innerHTML = "<table><thead><tr><th>Ciclo</th><th class='n'>Risco aberto</th><th class='n'>Reduzido</th><th class='n'>Residual</th><th class='n'>Itens corrigidos</th><th class='n'>Itens no KEV</th></tr></thead><tbody>" +
     D.risco.map(s => `<tr><td>${data(s.t)}</td><td class="n">${fmt(s.risco_aberto, 1)}</td><td class="n">${fmt(s.risco_reduzido, 1)}</td><td class="n">${fmt(s.risco_aberto - s.risco_reduzido, 1)}</td><td class="n">${fmt(s.corrigidos)}</td><td class="n">${fmt(s.kev_abertos)}</td></tr>`).join("") + "</tbody></table>";
 }
 
@@ -256,12 +257,31 @@ const sinal = (kev, epss) => (kev ? `<span class="kev" title="Catálogo de vulne
   `<span class="seg">${epss == null ? "sem EPSS na data" : "EPSS " + fmt(epss, 4)}</span>`;
 const sinal2 = (r, M) => sinal(r[M.kev], r[M.epss]) + `<span class="seg">CVSS ${r[M.cvss] == null ? "sem nota" : fmt(r[M.cvss], 1)}</span>` +
   (r[M.produto] && r[M.produto][2] ? `<span class="seg">uso em <i>ransomware</i></span>` : "");
-const correcao = (r, M) => `${r[M.kev] ? "Aplicar correção ou mitigação do fabricante" : "Aplicar atualização do fabricante"}` +
-  (r[M.produto] ? `<span class="seg">${r[M.produto][0]}, ${r[M.produto][1]}</span>` : "") +
-  `<span class="seg"><a href="https://nvd.nist.gov/vuln/detail/${r[M.cve]}" target="_blank" rel="noopener">Avisos na NVD</a></span>`;
-const ameaca = (kev, p) => kev
-  ? `Exploração confirmada, no KEV desde ${data(kev)}, por isso p = 1.`
-  : `Probabilidade de ${fmt(100 * p, 2)}% de exploração confirmada em 365 dias.`;
+const COMPENSA = { N: "restringir o acesso de rede ao serviço afetado e monitorar tentativas de exploração",
+  A: "isolar o segmento de rede do ativo e monitorar acessos vizinhos", L: "restringir contas locais e privilégios no ativo",
+  P: "reforçar o controle de acesso físico ao ativo" };
+const esc = t => String(t).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const corta = (t, n) => t.length > n ? t.slice(0, n).replace(/\s+\S*$/, "") + "…" : t;
+function correcao(r, M) {
+  const c = D.correcao[r[M.cve]] || {}, mais = c.n > 1 ? ` e em outros ${c.n - 1} produtos ou versões` : "";
+  let txt, temCorrecao = true;
+  if (c.s) txt = `<b>Correção disponível.</b> Fabricante: “${esc(corta(c.s, 130))}”`;
+  else if (c.v) txt = `<b>Correção disponível:</b> atualizar ${esc(c.v[0][0] || "o produto")} para a versão ${esc(c.v[0][1])} ou superior${mais}`;
+  else if (c.ate) { txt = `<b>Correção não identificada.</b> Afeta ${esc(c.ate[0][0] || "o produto")} até a versão ${esc(c.ate[0][1])}${mais}; verificar versão posterior`; temCorrecao = false; }
+  else { txt = "<b>Sem correção informada</b> no registro da CVE"; temCorrecao = false; }
+  let extra = "";
+  if (!temCorrecao) extra = c.w ? `<span class="seg">Contorno do fabricante: “${esc(corta(c.w, 120))}”</span>`
+    : `<span class="seg">Controle compensatório: ${COMPENSA[D.vetor[r[M.cve]]] || "avaliar o isolamento do ativo até haver correção"}</span>`;
+  const link = c.a ? `<a href="${esc(c.a)}" target="_blank" rel="noopener">Aviso do fabricante</a>`
+    : `<a href="https://nvd.nist.gov/vuln/detail/${r[M.cve]}" target="_blank" rel="noopener">Avisos na NVD</a>`;
+  return txt + extra + (r[M.produto] ? `<span class="seg">${esc(r[M.produto][0])}, ${esc(r[M.produto][1])}</span>` : "") + `<span class="seg">${link}</span>`;
+}
+const sinais = (r, M) => [r[M.epss] == null ? null : `EPSS ${fmt(r[M.epss], 4)}`,
+  r[M.hist] ? `fabricante com ${fmt(r[M.hist])} ${r[M.hist] > 1 ? "inclusões anteriores" : "inclusão anterior"} no KEV` : "fabricante sem histórico no KEV",
+  r[M.provas] ? `${fmt(r[M.provas])} ${r[M.provas] > 1 ? "provas de conceito públicas" : "prova de conceito pública"}` : "sem prova de conceito pública"].filter(Boolean).join(", ");
+const ameaca = (r, M) => r[M.kev]
+  ? `Exploração confirmada, no KEV desde ${data(r[M.kev])}, por isso p = 1.`
+  : `O modelo estima ${fmt(100 * r[M.p], 2)}% de chance de exploração confirmada em 365 dias (${sinais(r, M)}).`;
 const barra = (v, max) => `<span class="barra" style="width:${Math.max(2, 30 * v / max)}px"></span>${fmt(v, 4)}`;
 const nota = v => v == null ? "sem nota" : fmt(v, 1);
 
@@ -291,7 +311,7 @@ function fila() {
         <td style="white-space:nowrap">${barra(r[G.R], maxR)}</td>
         <td class="n">${fmt(r[G.Rsum], 2)}</td>
         <td class="n" style="white-space:nowrap">${fmt(r[G.esforco], 1)} h</td>
-        <td class="porque">${ameaca(r[G.kev], r[G.p])} Presente em ${partes.join(" e em ")}; o ativo mais crítico tem impacto ${fmt(r[G.I], 2)}.</td>
+        <td class="porque">${ameaca(r, G)} Presente em ${partes.join(" e em ")}; o ativo mais crítico tem impacto ${fmt(r[G.I], 2)}.</td>
         <td class="correcao">${correcao(r, G)}</td></tr>`;
     });
   } else {
@@ -300,7 +320,7 @@ function fila() {
     const maxR = Math.max(...todas.map(r => r[C.R]), 1e-9);
     el("cabecalho").innerHTML = `<tr><th class="n">Pos.</th><th>CVE</th><th>Ativo</th><th>Sinal de ameaça</th>
       <th class="n">p</th><th class="n">I</th><th>R = p · I</th><th class="n">Esforço</th><th>Por que está nesta posição</th><th>Correção</th></tr>`;
-    el("nota-fila").textContent = `${fmt(todas.length)} primeiros de ${fmt(c.abertos)} itens abertos. A capacidade do ciclo cobre os ${fmt(c.corrigidos)} primeiros da fila.`;
+    el("nota-fila").textContent = `${fmt(todas.length)} primeiros de ${fmt(c.abertos)} itens abertos. A fila segue o risco por hora (R dividido pelo esforço), e a capacidade do ciclo cobre os ${fmt(c.corrigidos)} primeiros.`;
     linhas = f.slice(0, limite).map(r => `<tr>
       <td class="n">${r[C.pos]}</td>
       <td class="cve">${r[C.cve]}<span class="seg" style="font-weight:400">publicada em ${data(r[C.pub])}</span></td>
@@ -310,7 +330,7 @@ function fila() {
       <td class="n">${fmt(r[C.I], 2)}</td>
       <td style="white-space:nowrap">${barra(r[C.R], maxR)}</td>
       <td class="n" style="white-space:nowrap">${fmt(r[C.esforco], 2)} h</td>
-      <td class="porque">${ameaca(r[C.kev], r[C.p])} Ativo ${EXPO[String(r[C.e])] || ""}, com requisitos CIA ${r[C.c]}/${r[C.i]}/${r[C.a]}.</td>
+      <td class="porque">${ameaca(r, C)} Ativo ${EXPO[String(r[C.e])] || ""}, com requisitos CIA ${r[C.c]}/${r[C.i]}/${r[C.a]}.</td>
       <td class="correcao">${correcao(r, C)}</td></tr>`);
   }
   el("linhas").innerHTML = linhas.join("") || `<tr><td colspan="11" style="color:var(--tinta-2)">Nenhum registro entre os ${fmt(todas.length)} primeiros atende aos filtros.</td></tr>`;
@@ -323,8 +343,8 @@ sel.addEventListener("change", () => { ciclo = sel.value; limite = 12; tudo(); }
 el("mais").addEventListener("click", () => { limite += 25; fila(); });
 new ResizeObserver(graficos).observe(el("p-risco"));
 el("evolucao").addEventListener("toggle", graficos);
-el("rodape").textContent = `Gerado em ${data(D.gerado_em)} por gerar_painel.py. Probabilidade p: EPSS calibrado para inclusão no KEV em 365 dias. ` +
-  `Impacto I: média dos requisitos CIA do ativo, ponderada pela exposição. Correção: orientação genérica e produto do catálogo KEV; em produção, o texto vem do achado do scanner e segue para o chamado. Fontes: NVD (NIST), KEV (CISA) e EPSS (FIRST).`;
+el("rodape").textContent = `Gerado em ${data(D.gerado_em)} por gerar_painel.py. Probabilidade p: regressão logística com EPSS, histórico do fabricante no KEV e provas de conceito públicas, calibrada para inclusão no KEV em 365 dias. ` +
+  `Impacto I: média dos requisitos CIA do ativo, ponderada pela exposição. Correção: versão corrigida, solução e contorno informados pelo fabricante no registro atual da CVE; o controle compensatório segue regra fixa por vetor de ataque. Em produção, soma-se o texto do achado do scanner. Fontes: NVD (NIST), KEV (CISA) e EPSS (FIRST).`;
 tudo();
 </script>
 </body>
