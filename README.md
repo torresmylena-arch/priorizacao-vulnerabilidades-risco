@@ -48,7 +48,10 @@ Autora: Mylena Ferreira Torres.
 
 ## Painel de gestão de risco
 
-`painel.html` é a tela do protótipo. Baixe o arquivo e abra no navegador (não precisa de servidor nem de internet).
+`painel.html` é a tela do protótipo. Para ver funcionando, abra
+https://torresmylena-arch.github.io/priorizacao-vulnerabilidades-risco/painel.html
+
+Também é possível baixar o arquivo e abrir no navegador, sem servidor nem internet.
 Ele mostra, para cada ciclo mensal, os indicadores de risco aberto e reduzido, a fila priorizada por
 vulnerabilidade ou por item, a justificativa de cada posição e a orientação de correção.
 As CVEs, o KEV e o EPSS são reais e respeitam a data do ciclo; o inventário de ativos é sintético.
