@@ -6,14 +6,16 @@
   2. PoC-in-GitHub (https://github.com/nomi-sec/PoC-in-GitHub): data de criação de cada repositório
      público com prova de conceito.
 
-Uso: python coleta/extrair_sinais.py <pasta cvelistV5> <pasta PoC-in-GitHub> dados/sinais.json
+Uso: python coleta/extrair_sinais.py <pasta cvelistV5> <pasta PoC-in-GitHub> dados/sinais.json [anos]
+     (anos separados por vírgula; padrão 2023,2025; a verificação com CVEs de 2024 usa "2024")
 Leia os arquivos baixados com "python -I", pois são dados de terceiros.
 """
 import glob, json, os, sys
 
 cvelist, poc, saida = sys.argv[1:4]
+anos = sys.argv[4].split(",") if len(sys.argv) > 4 else ["2023", "2025"]
 out = {}
-for ano in ("2023", "2025"):
+for ano in anos:
     for f in glob.iglob(os.path.join(cvelist, "cves", ano, "*", "CVE-*.json")):
         try:
             d = json.load(open(f, encoding="utf-8"))
