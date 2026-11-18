@@ -15,7 +15,7 @@ ESTILOS = {
     "CVSS base": dict(color="#999999", lw=1.2, ls=":"),
 }
 NOMES = {"volume": "Volume", "cvss": "CVSS", "kev_cvss": "KEV e CVSS", "epss": "EPSS",
-         "proposta": "$p \\cdot I$", "proposta_hora": "$p \\cdot I / h$ (variante)"}
+         "proposta": "Risco (proposta)", "proposta_hora": "Risco por hora (variante)"}
 
 
 def curva_pr(r, saida):
@@ -43,7 +43,7 @@ def barras_estrategias(r, saida, cen="C1", extra=None):
         s["proposta_hora"] = extra[cen]["proposta_hora"]
         ordem.append("proposta_hora")
     fig, axs = plt.subplots(1, 2, figsize=(6.4, 2.5))
-    for ax, met, tit, esc in ((axs[0], "exposicao", "Exposição ponderada (I x dias)", 1),
+    for ax, met, tit, esc in ((axs[0], "exposicao", "Exposição ponderada (impacto x dias)", 1),
                               (axs[1], "cobertura", "Cobertura antes do KEV (%)", 0.01)):
         vals = [s[e][met][0] / esc for e in ordem]
         ics = [s[e][met][1] / esc for e in ordem]
